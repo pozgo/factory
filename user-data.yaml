@@ -1,0 +1,85 @@
+#cloud-config
+
+coreos:
+  update:
+    group: beta
+    reboot-strategy: best-effort
+  
+  etcd:
+    # generate a new token for each unique cluster from http://discovery.etcd.io/new
+    # WARNING: replace each time you 'vagrant destroy'
+    discovery: https://discovery.etcd.io/<token>
+    addr: $public_ipv4:4001
+    peer-addr: $public_ipv4:7001
+  
+  fleet:
+    public-ip: $public_ipv4
+  
+  units:
+    - name: etcd.service
+      command: start
+    - name: fleet.service
+      command: start
+    - name: firewall.service
+      command: start
+      content: |
+        [Unit]
+        Description=Packet Filtering Framework
+        DefaultDependencies=no
+        After=systemd-sysctl.service
+        Before=sysinit.target
+        
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/sbin/iptables-restore /opt/docker/scripts/iptables/iptables.rules
+        ExecReload=/usr/sbin/iptables-restore /opt/docker/scripts/iptables/iptables.rules
+        ExecStop=/usr/sbin/iptables --flush
+        RemainAfterExit=yes
+        
+        [Install]
+        WantedBy=multi-user.target
+
+users:
+   - name: przemek
+    primary-group: wheel
+    groups:
+      - sudo
+      - docker
+    coreos-ssh-import-github: pozgo
+
+write_files:
+  - path: /home/core/.bashrc
+    permissions: 0644
+    owner: core
+    content: |
+      alias ll='ls -lah'
+  - path: /home/przemek/.bashrc
+    permissions: 0644
+    owner: przemek
+    content: |
+      alias ll='ls -lah'
+
+# Firewall rules 
+  - path: /opt/docker/scripts/iptables/iptables.rules
+    content: |
+      *filter
+      :INPUT DROP [0:0]
+      -A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -m comment --comment "SSH access" -j ACCEPT
+      -A INPUT -p tcp --dport ssh -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 7001 -m comment --comment "ETCD" -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 4001 -m comment --comment "Fleet" -j ACCEPT
+      -A INPUT -p icmp -m icmp --icmp-type 8 -m state --state NEW,RELATED,ESTABLISHED -m comment --comment "ping pong stuff" -j ACCEPT 
+      -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 80 -m comment --comment "HTTP" -j ACCEPT 
+      COMMIT
+
+# SSHD Mods 
+  - path: /etc/ssh/sshd_config
+    content: |
+      UsePrivilegeSeparation sandbox
+      Subsystem sftp internal-sftp
+      PasswordAuthentication no
+      ChallengeResponseAuthentication no
+      PermitRootLogin no
+      X11Forwarding no
+      X11UseLocalhost no
