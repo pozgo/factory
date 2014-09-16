@@ -41,11 +41,11 @@ coreos:
 
 users:
    - name: przemek
-    primary-group: wheel
-    groups:
-      - sudo
-      - docker
-    coreos-ssh-import-github: pozgo
+     primary-group: wheel
+     groups:
+       - sudo
+       - docker
+     coreos-ssh-import-github: pozgo
 
 write_files:
   - path: /home/core/.bashrc
@@ -53,11 +53,13 @@ write_files:
     owner: core
     content: |
       alias ll='ls -lah'
+      alias htop='docker run -t -i --rm --name htop polinux/toolbox htop'
   - path: /home/przemek/.bashrc
     permissions: 0644
     owner: przemek
     content: |
       alias ll='ls -lah'
+      alias htop='docker run -t -i --rm --name htop polinux/toolbox htop'
 
 # Firewall rules 
   - path: /opt/docker/scripts/iptables/iptables.rules
@@ -68,6 +70,8 @@ write_files:
       -A INPUT -p tcp --dport ssh -j ACCEPT
       -A INPUT -p tcp -m tcp --dport 7001 -m comment --comment "ETCD" -j ACCEPT
       -A INPUT -p tcp -m tcp --dport 4001 -m comment --comment "Fleet" -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 9200 -m comment --comment "Elasticsearch HTTP" -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 9300 -m comment --comment "Elasticsearch DUMP" -j ACCEPT
       -A INPUT -p icmp -m icmp --icmp-type 8 -m state --state NEW,RELATED,ESTABLISHED -m comment --comment "ping pong stuff" -j ACCEPT 
       -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
       -A INPUT -p tcp -m tcp --dport 80 -m comment --comment "HTTP" -j ACCEPT 
