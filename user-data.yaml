@@ -20,24 +20,26 @@ coreos:
       command: start
     - name: fleet.service
       command: start
-    - name: firewall.service
-      command: start
-      content: |
-        [Unit]
-        Description=Packet Filtering Framework
-        DefaultDependencies=no
-        After=systemd-sysctl.service
-        Before=sysinit.target
-        
-        [Service]
-        Type=oneshot
-        ExecStart=/usr/sbin/iptables-restore /opt/docker/scripts/iptables/iptables.rules
-        ExecReload=/usr/sbin/iptables-restore /opt/docker/scripts/iptables/iptables.rules
-        ExecStop=/usr/sbin/iptables --flush
-        RemainAfterExit=yes
-        
-        [Install]
-        WantedBy=multi-user.target
+
+
+    # - name: firewall.service
+    #   command: start
+    #   content: |
+    #     [Unit]
+    #     Description=Packet Filtering Framework
+    #     DefaultDependencies=no
+    #     After=systemd-sysctl.service
+    #     Before=sysinit.target
+    #
+    #     [Service]
+    #     Type=oneshot
+    #     ExecStart=/usr/sbin/iptables-restore /opt/docker/scripts/iptables/iptables.rules
+    #     ExecReload=/usr/sbin/iptables-restore /opt/docker/scripts/iptables/iptables.rules
+    #     ExecStop=/usr/sbin/iptables --flush
+    #     RemainAfterExit=yes
+    #
+    #     [Install]
+    #     WantedBy=multi-user.target
 
 users:
    - name: przemek
@@ -60,22 +62,70 @@ write_files:
     content: |
       alias ll='ls -lah'
       alias htop='docker run -t -i --rm --name htop polinux/toolbox htop'
+  - path: /home/core/elasticsearch.service
+    content: |
+      [Unit]
+      Description=Elasticsearch Server
+      After=docker.service
+      Requires=docker.service
+      
+      [Service]
+      TimeoutStartSec=0
+      Type=oneshot
+      RemainAfterExit=true
+      EnvironmentFile=/etc/environment
+      ExecStartPre=/usr/bin/docker pull million12/elasticsearch
+      ExecStart=/usr/bin/docker run --name elasticsearch -p 9200:9200 million12/elasticsearch
+      ExecStartPost=/usr/bin/docker start elasticsearch
+      ExecStop=/usr/bin/docker stop elasticsearch
+      
+      [Install]
+      WantedBy=multi-user.target
+      
+      [X-Fleet]
+      Conflicts=elasticsearch.service
+  - path: /home/core/logstash.service
+    content: |
+      [Unit]
+      Description=Logstash Server
+      After=docker.service
+      Requires=docker.service
+      
+      [Service]
+      TimeoutStartSec=0
+      Type=oneshot
+      RemainAfterExit=true
+      EnvironmentFile=/etc/environment
+      ExecStartPre=/usr/bin/docker pull million12/logstash
+      ExecStartPre=/usr/bin/mkdir /opt/ssl
+      ExecStartPre=/usr/bin/chown core:core /opt/ssl
+      ExecStart=/usr/bin/docker run --name logstash -e ELASTICSEARCH_IP=172.17.42.1 -p 5000:5000 -v /opt/ssl:/opt/logstah/ssl million12/logstash
+      ExecStartPost=/usr/bin/docker start logstash
+      ExecStop=/usr/bin/docker stop logstash
+      
+      [Install]
+      WantedBy=multi-user.target
+      
+      [X-Fleet]
+      MachineOf=elasticsearch.service
 
 # Firewall rules 
-  - path: /opt/docker/scripts/iptables/iptables.rules
-    content: |
-      *filter
-      :INPUT DROP [0:0]
-      -A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -m comment --comment "SSH access" -j ACCEPT
-      -A INPUT -p tcp --dport ssh -j ACCEPT
-      -A INPUT -p tcp -m tcp --dport 7001 -m comment --comment "ETCD" -j ACCEPT
-      -A INPUT -p tcp -m tcp --dport 4001 -m comment --comment "Fleet" -j ACCEPT
-      -A INPUT -p tcp -m tcp --dport 9200 -m comment --comment "Elasticsearch HTTP" -j ACCEPT
-      -A INPUT -p tcp -m tcp --dport 9300 -m comment --comment "Elasticsearch DUMP" -j ACCEPT
-      -A INPUT -p icmp -m icmp --icmp-type 8 -m state --state NEW,RELATED,ESTABLISHED -m comment --comment "ping pong stuff" -j ACCEPT 
-      -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
-      -A INPUT -p tcp -m tcp --dport 80 -m comment --comment "HTTP" -j ACCEPT 
-      COMMIT
+#  - path: /opt/docker/scripts/iptables/iptables.rules
+#    content: |
+#      *filter
+#      :INPUT DROP [0:0]
+#      -A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -m comment --comment "SSH access" -j ACCEPT
+#      -A INPUT -p tcp --dport ssh -j ACCEPT
+#      -A INPUT -p udp -m udp --dport 161 -m comment --comment "SNMPD" -j ACCEPT
+#      -A INPUT -p tcp -m tcp --dport 7001 -m comment --comment "ETCD" -j ACCEPT
+#      -A INPUT -p tcp -m tcp --dport 3306 -m comment --comment "MySQL" -j ACCEPT
+#      -A INPUT -p tcp -m tcp --dport 4001 -m comment --comment "Fleet" -j ACCEPT
+#      -A INPUT -p tcp -m tcp --dport 9200 -m comment --comment "Elasticsearch HTTP" -j ACCEPT
+#      -A INPUT -p tcp -m tcp --dport 9300 -m comment --comment "Elasticsearch DUMP" -j ACCEPT
+#      -A INPUT -p icmp -m icmp --icmp-type 8 -m state --state NEW,RELATED,ESTABLISHED -m comment --comment "ping pong stuff" -j ACCEPT 
+#      -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+#      -A INPUT -p tcp -m tcp --dport 80 -m comment --comment "HTTP" -j ACCEPT 
+#      COMMIT
 
 # SSHD Mods 
   - path: /etc/ssh/sshd_config
